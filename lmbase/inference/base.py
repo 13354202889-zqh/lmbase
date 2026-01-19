@@ -144,9 +144,9 @@ class BaseLMAPIInference(ABC):
         For example, use the ChatPromptTemplate.
         """
 
-    def run(self, infer_input: InferInput, **kwargs) -> InferOutput:
+    def run(self, infer_inputs: List[InferInput], **kwargs) -> InferOutput:
         """Run the synthesizer on the data samples."""
-
+        infer_input = infer_inputs[0]
         # convert the input to the target messages required by different APIs.
         messages = (
             infer_input.messages

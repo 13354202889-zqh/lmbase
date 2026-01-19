@@ -184,20 +184,6 @@ class LLMInference(BaseLMInference):
     - Keeps vector fields (`logits`, `hidden_states`, `attentions`, `embeddings`) disabled by default
     """
 
-    def __init__(
-        self,
-        lm_path: str,
-        inference_config: dict = None,
-        generation_config: dict = None,
-        **kwargs,
-    ):
-        super().__init__(
-            lm_path=lm_path,
-            inference_config=inference_config or {},
-            generation_config=generation_config or {},
-        )
-        self.use_vllm = bool(self.inference_config.get("use_vllm", False))
-
     def _load_model(self):
         """
         Load tokenizer and model resources.
@@ -205,7 +191,7 @@ class LLMInference(BaseLMInference):
         - In vLLM mode, initialize `LLM` and keep a HF tokenizer for decoding.
         - Otherwise, use Transformers `AutoModelForCausalLM` and `AutoTokenizer`.
         """
-        if self.use_vllm:
+        if self.inference_config["use_vllm"]:
             self.model = LLM(model=self.lm_path)
             self.tokenizer = AutoTokenizer.from_pretrained(self.lm_path)
             return
@@ -259,7 +245,7 @@ class LLMInference(BaseLMInference):
         messages = tok["messages"]
         inputs = tok["inputs"]
 
-        if self.use_vllm and self.model is not None:
+        if self.inference_config["use_vllm"] and self.model is not None:
             # Build sampling parameters directly from **kwargs so callers can control
             # decoding behavior (e.g., max_new_tokens, temperature, top_p, top_k).
             prompts = tok["prompts"]
