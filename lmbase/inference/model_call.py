@@ -285,6 +285,7 @@ class LLMInference(BaseLMInference):
                 **self.generation_config,
                 return_dict_in_generate=True,
                 output_attentions=True,
+                output_scores=True,
             )
         # Collect sequences ([B, L_in + L_gen]) and slice out generated IDs
         sequences = outputs.sequences
@@ -310,7 +311,7 @@ class LLMInference(BaseLMInference):
             cost=cost,
             input_ids=inputs.input_ids,
             completion_ids=completion_ids,
-            logits=None,
+            logits=outputs.scores,
             hidden_states=None,
             attentions=list(attentions) if attentions is not None else None,
             embeddings=None,

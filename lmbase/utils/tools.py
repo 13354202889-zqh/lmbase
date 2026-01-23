@@ -546,6 +546,8 @@ class BlockBasedStoreManager:
         Special Handling:
         - **torch.Tensor**: Saved to `{savename}_{path}.pt`. The JSON stores a reference dict:
         `{"_type": "torch.tensor", "_path": "..."}`.
+        - **List/Tuple of tensors**: All tensors are saved to a folder named `{savename}_{path}`.
+        The JSON stores a reference dict: `{"_type": "torch.tensor.list", "_path": "..."}`.
         - **Non-serializable objects**: Converted to string via `str(data)`.
 
         Args:
@@ -567,22 +569,45 @@ class BlockBasedStoreManager:
                 torch.save(data, tensor_path)
             return {"_type": "torch.tensor", "_path": tensor_path}
 
+        # Handle lists/tuples that contain only tensors
+        elif isinstance(data, (list, tuple)):
+            # Check if all elements in the list/tuple are tensors
+            if all(isinstance(item, torch.Tensor) for item in data):
+                # Create a folder for this collection of tensors in the tensors directory
+                folder_name = (
+                    f"{savename}_{path.replace('.', '_').replace('[', '_').replace(']', '')}"
+                    if path
+                    else savename
+                )
+                tensor_dir = os.path.join(self.folder, "tensors")
+                os.makedirs(tensor_dir, exist_ok=True)
+                tensor_folder = os.path.join(tensor_dir, folder_name)
+                os.makedirs(tensor_folder, exist_ok=True)
+
+                # Save each tensor with an indexed name
+                for i, tensor in enumerate(data):
+                    tensor_path = os.path.join(tensor_folder, f"tensor_{i}.pt")
+                    if not os.path.exists(tensor_path):
+                        torch.save(tensor, tensor_path)
+
+                # Return a reference to the folder
+                return {"_type": "torch.tensor.list", "_path": tensor_folder}
+            else:
+                # Handle lists/tuples with mixed content by recursively processing each element
+                result = []
+                for i, value in enumerate(data):
+                    new_path = f"{path}[{i}]" if path else f"[{i}]"
+                    result.append(
+                        self._prepare_value_for_storage(savename, value, new_path)
+                    )
+                return result
+
         # Handle dictionaries by recursively processing each value
         elif isinstance(data, dict):
             result = {}
             for key, value in data.items():
                 new_path = f"{path}.{key}" if path else key
                 result[key] = self._prepare_value_for_storage(savename, value, new_path)
-            return result
-
-        # Handle lists/tuples by recursively processing each element
-        elif isinstance(data, (list, tuple)):
-            result = []
-            for i, value in enumerate(data):
-                new_path = f"{path}[{i}]" if path else f"[{i}]"
-                result.append(
-                    self._prepare_value_for_storage(savename, value, new_path)
-                )
             return result
 
         # Handle other data types
@@ -599,13 +624,33 @@ class BlockBasedStoreManager:
 
         Special Handling:
         - **Tensor References**: Detects `{"_type": "torch.tensor"}` and loads the `.pt` file.
+        - **Tensor List References**: Detects `{"_type": "torch.tensor.list"}` and loads all tensors from the folder.
 
         Args:
             value (Any): Data loaded from JSON.
 
         Returns:
-            Any: Restored object (e.g., torch.Tensor).
+            Any: Restored object (e.g., torch.Tensor, list of tensors).
         """
+        # Handle tensor list references
+        if (
+            isinstance(value, dict)
+            and value.get("_type") == "torch.tensor.list"
+            and isinstance(value.get("_path"), str)
+        ):
+            tensor_folder = value["_path"]
+            if os.path.exists(tensor_folder):
+                # Load all tensors from the folder
+                tensor_files = sorted(
+                    [f for f in os.listdir(tensor_folder) if f.endswith(".pt")],
+                    key=lambda x: int(x.split("_")[1].split(".")[0]),  # Sort by index
+                )
+                tensors = []
+                for tensor_file in tensor_files:
+                    tensor_path = os.path.join(tensor_folder, tensor_file)
+                    tensors.append(torch.load(tensor_path))
+                return tensors
+
         # Handle tensor references
         if (
             isinstance(value, dict)
