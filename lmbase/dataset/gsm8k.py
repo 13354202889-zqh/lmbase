@@ -25,7 +25,10 @@ class GSM8KDataset(VisualTextBase):
         self.idx += 1
 
         # Create the sample
-        groundtruth_sol = re_extractor.extract_content(sample["answer"], marker="####")
+        groundtruth_sol = re_extractor.extract_content(
+            sample["answer"],
+            marker="####",
+        )
         groundtruth_sol = "" if groundtruth_sol is None else groundtruth_sol
         problem = sample["question"]
         question = f"{problem}{self.SOLUTION_FORMAT_PROMPT}"

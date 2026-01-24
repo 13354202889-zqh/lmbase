@@ -82,14 +82,18 @@ def extract_figures(
     return matches
 
 
-def extract_content(text, marker, content_pattern=r"(\d+)"):
+def extract_content(text, marker, content_pattern=r"(-?\d+(?:\.\d+)?)"):
     """
-    Extracts content, specifically the digital numbers, presented
-    after the `marker` in a text.
+    Extracts content, specifically the digital numbers (including negative numbers and decimals),
+    presented after the `marker` in a text.
 
     For example:
         when marker is #### and the text is "The answer is #### 1234",
         we will have 1234.
+        when marker is #### and the text is "The answer is #### -12",
+        we will have -12.
+        when marker is #### and the text is "The answer is #### 3.14",
+        we will have 3.14.
     """
     # Build the regex pattern by escaping the marker so it is taken literally.
     # Then, we allow optional whitespace and capture the desired content.

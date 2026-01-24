@@ -301,6 +301,7 @@ class VisualTextBase(Dataset):
             logging.info(
                 "  !! Failed to parse gold solution: %s ", sample["cot_answer"]
             )
+            print(sample)
 
         # Apply downstream formatting when available
         if self.lm_format_function is not None:
