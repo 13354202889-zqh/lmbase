@@ -35,6 +35,7 @@ from lmbase.dataset import (
     gpqad,
     medqa,
     arc,
+    finagent,
 )
 
 data_factory = {
@@ -64,6 +65,7 @@ data_factory = {
     "gpqad": gpqad.GPQADiamondDataset,
     "medqa": medqa.MedQADataset,
     "arc": arc.ARCDataset,
+    "finagent": finagent.FinAgentDataset,
 }
 
 
@@ -95,6 +97,7 @@ hf_datasets = {
     "gpqad": "fingertap/GPQA-Diamond",
     "medqa": "openlifescienceai/medqa",
     "arc": "allenai/ai2_arc",
+    "finagent": "vals-ai/finance_agent_benchmark",
 }
 
 

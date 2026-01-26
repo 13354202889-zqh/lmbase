@@ -544,9 +544,9 @@ class BlockBasedStoreManager:
         Pre-process data before JSON serialization.
 
         Special Handling:
-        - **torch.Tensor**: Saved to `{savename}_{path}.pt`. The JSON stores a reference dict:
-        `{"_type": "torch.tensor", "_path": "..."}`.
-        - **List/Tuple of tensors**: All tensors are saved to a folder named `{savename}_{path}`.
+        - **torch.Tensor**: Saved to `{savename}/{path}.pt` within a record-specific folder.
+        The JSON stores a reference dict: `{"_type": "torch.tensor", "_path": "..."}`.
+        - **List/Tuple of tensors**: All tensors are saved to `{savename}/{path}/` folder.
         The JSON stores a reference dict: `{"_type": "torch.tensor.list", "_path": "..."}`.
         - **Non-serializable objects**: Converted to string via `str(data)`.
 
@@ -560,11 +560,19 @@ class BlockBasedStoreManager:
         """
         # Handle tensors
         if isinstance(data, torch.Tensor):
-            # Create a unique path for this tensor
-            tensor_name = f"{savename}_{path.replace('.', '_')}" if path else savename
-            tensor_dir = os.path.join(self.folder, "tensors")
-            os.makedirs(tensor_dir, exist_ok=True)
-            tensor_path = os.path.join(tensor_dir, f"{tensor_name}.pt")
+            # Create a record-specific folder under tensors directory
+            record_tensor_dir = os.path.join(self.folder, "tensors", savename)
+            os.makedirs(record_tensor_dir, exist_ok=True)
+
+            # Create tensor filename based on path
+            if path:
+                tensor_name = (
+                    f"{path.replace('.', '_').replace('[', '_').replace(']', '_')}.pt"
+                )
+            else:
+                tensor_name = "tensor.pt"
+
+            tensor_path = os.path.join(record_tensor_dir, tensor_name)
             if not os.path.exists(tensor_path):
                 torch.save(data, tensor_path)
             return {"_type": "torch.tensor", "_path": tensor_path}
@@ -573,15 +581,19 @@ class BlockBasedStoreManager:
         elif isinstance(data, (list, tuple)):
             # Check if all elements in the list/tuple are tensors
             if all(isinstance(item, torch.Tensor) for item in data):
-                # Create a folder for this collection of tensors in the tensors directory
-                folder_name = (
-                    f"{savename}_{path.replace('.', '_').replace('[', '_').replace(']', '')}"
-                    if path
-                    else savename
-                )
-                tensor_dir = os.path.join(self.folder, "tensors")
-                os.makedirs(tensor_dir, exist_ok=True)
-                tensor_folder = os.path.join(tensor_dir, folder_name)
+                # Create a record-specific folder under tensors directory
+                record_tensor_dir = os.path.join(self.folder, "tensors", savename)
+                os.makedirs(record_tensor_dir, exist_ok=True)
+
+                # Create a subfolder for this tensor list based on path
+                if path:
+                    folder_name = (
+                        path.replace(".", "_").replace("[", "_").replace("]", "_")
+                    )
+                else:
+                    folder_name = "tensor_list"
+
+                tensor_folder = os.path.join(record_tensor_dir, folder_name)
                 os.makedirs(tensor_folder, exist_ok=True)
 
                 # Save each tensor with an indexed name
