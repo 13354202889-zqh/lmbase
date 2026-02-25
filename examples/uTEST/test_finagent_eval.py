@@ -1,63 +1,95 @@
 """
 Test script for the FinAgent evaluation framework.
+
+This script allows evaluation of different models on the Finance Agent Benchmark dataset.
+It supports both API-based models (like OpenAI, Anthropic, DeepSeek) and HuggingFace models.
+
+Usage Examples:
+    # Evaluate with API model (DeepSeek)
+    python examples/uTEST/test_finagent_eval.py -m deepseek/deepseek-chat -t api -s EXPERIMENT/FinAgent
+
+    # Evaluate with HuggingFace model (Qwen/Qwen2.5-1.5B-instruct)
+    python examples/uTEST/test_finagent_eval.py -m Qwen/Qwen2.5-1.5B-instruct -t huggingface -s EXPERIMENT/FinAgent
+
+Arguments:
+    -m, --model: Model name to use for evaluation
+    -t, --type: Model type ('api' for API-based models or 'huggingface' for HuggingFace models)
+    -s, --save-dir: Directory to save evaluation logs and trajectories
 """
 
+# Python built-in packages
 import asyncio
 import argparse
+import traceback
+
+# Third-party packages
+from dotenv import load_dotenv
+
+# Internal imports
 from lmbase.eval.finagent import FinAgentEvaluator
 from lmbase.dataset.registry import get
 
-from dotenv import load_dotenv
 
-load_dotenv()
-
-
-def test_finagent_evaluator():
-    """Test the FinAgent evaluator initialization."""
-    print("Testing FinAgent evaluator initialization...")
-
-    try:
-        # Initialize evaluator with a mock model (won't actually run without API key)
-        evaluator = FinAgentEvaluator(model_name="deepseek/deepseek-chat")
-        print("✓ FinAgent evaluator initialized successfully")
-
-        return True
-
-    except Exception as e:
-        print(f"✗ Error: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return False
-
-
-async def test_async_evaluation(save_dir="./logs"):
-    """Test the async evaluation functionality."""
-    print("\nTesting async evaluation...")
+def test_evaluation(
+    model_name="deepseek/deepseek-chat",
+    model_type="api",
+    save_dir="./logs",
+    max_samples=5,
+):
+    """Test the evaluation functionality by iterating through dataset samples."""
+    load_dotenv()
+    print(f"\nTesting evaluation with model: {model_name} and type: {model_type}...")
 
     try:
-        evaluator = FinAgentEvaluator(model_name="deepseek/deepseek-chat")
+        evaluator = FinAgentEvaluator(model_name=model_name, model_type=model_type)
 
-        # Get a sample from the finagent dataset
+        # Get the finagent dataset
         config = {"data_name": "finagent", "data_path": "./EXPERIMENT/data/finagent"}
         dataset = get(config, split="train")
 
-        # Test single sample evaluation
-        if len(dataset) > 0:
-            sample = dataset[0]
-            print(f"✓ Prepared sample for evaluation: {sample['main_id']}")
+        print(f"Dataset loaded with {len(dataset)} samples")
 
-            # Test that the evaluation method can be called
-            result = await evaluator.evaluate_single_sample(sample, save_dir=save_dir)
-            print("✓ Async evaluation method can be called")
-            print(f"  Result keys: {list(result.keys())}")
+        # Iterate through all samples (or a subset for testing)
+        samples_to_test = min(len(dataset), max_samples)
+        print(f"Evaluating {samples_to_test} samples...")
+
+        results = []
+        for i in range(samples_to_test):
+            sample = dataset[i]
+            print(f"Evaluating sample {i+1}/{samples_to_test}: {sample['main_id']}")
+
+            try:
+                # Test that the evaluation method can be called
+                result = evaluator.evaluate_single_sample(sample, save_dir=save_dir)
+                results.append(result)
+                print(f"  ✓ Completed evaluation for sample: {sample['main_id']}")
+
+                # Print model output for debugging
+                print(
+                    f"  Generated answer: {result.get('generated_answer', 'No answer found')[:200]}..."
+                )
+
+            except Exception as e:
+                print(f"  ✗ Failed to evaluate sample {sample['main_id']}: {str(e)}")
+                traceback.print_exc()  # Print full traceback for debugging
+                continue
+
+        print(f"\nCompleted evaluation of {len(results)} samples successfully")
+        print(
+            f"Results keys in first result: {list(results[0].keys()) if results else 'No results'}"
+        )
+
+        # Calculate and display overall metrics
+        if results:
+            metrics = evaluator.calculate_metrics(results)
+            print(f"\nOverall Metrics:")
+            for key, value in metrics.items():
+                print(f"  {key}: {value}")
 
         return True
 
     except Exception as e:
         print(f"✗ Error: {e}")
-        import traceback
-
         traceback.print_exc()
         return False
 
@@ -71,6 +103,27 @@ def parse_args():
         default="./logs",
         help="Directory to save evaluation logs and trajectories",
     )
+    parser.add_argument(
+        "-m",
+        "--model",
+        type=str,
+        default="deepseek/deepseek-chat",
+        help="Model name to use for evaluation (e.g., deepseek/deepseek-chat, openai/gpt-4o)",
+    )
+    parser.add_argument(
+        "-t",
+        "--type",
+        type=str,
+        default="api",
+        choices=["api", "huggingface"],
+        help="Model type: 'api' for API-based models (openai/, anthropic/, etc.) or 'huggingface' for HuggingFace models",
+    )
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=1,
+        help="Maximum number of samples to evaluate (useful for testing)",
+    )
     return parser.parse_args()
 
 
@@ -80,13 +133,22 @@ if __name__ == "__main__":
 
     args = parse_args()
 
-    success1 = test_finagent_evaluator()
-    success2 = asyncio.run(test_async_evaluation(save_dir=args.save_dir))
+    success = test_evaluation(
+        model_name=args.model,
+        model_type=args.type,
+        save_dir=args.save_dir,
+        max_samples=args.max_samples,
+    )
 
-    if success1 and success2:
-        print(f"\n✓ All tests passed! The FinAgent evaluation framework is ready.")
+    if success:
+        print(
+            f"\n✓ Tests completed! The FinAgent evaluation framework processed samples successfully."
+        )
+        print(f"✓ Model used: {args.model}")
+        print(f"✓ Model type: {args.type}")
+        print(f"✓ Samples evaluated: {args.max_samples}")
         print(f"\nLogs and trajectories are saved to: {args.save_dir}")
     else:
-        print("\n✗ Some tests failed!")
+        print("\n✗ Tests failed!")
 
-    exit(0 if (success1 and success2) else 1)
+    exit(0 if success else 1)

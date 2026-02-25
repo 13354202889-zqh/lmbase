@@ -5,6 +5,7 @@ This module implements an evaluation framework for the Finance Agent Benchmark d
 using LangGraph and LangChain, inspired by the official implementation in third-part/finance-agent-main.
 """
 
+# Python built-in packages
 from typing import Dict, List, Tuple, Any, TypedDict
 from enum import Enum
 import json
@@ -12,15 +13,12 @@ import asyncio
 import os
 from datetime import datetime
 
-# Third-party correspondence: Based on model_library.base.LLM and related classes from official implementation
-# Why: Need to interface with LLMs in a standardized way similar to official approach
-# Changes: Using LangChain classes instead of custom model_library classes for lmbase compatibility
-# Impact: No impact on correctness; provides same functionality with lmbase framework compatibility
+# Third-party packages
 from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
-
+from langchain_huggingface import ChatHuggingFace, HuggingFacePipeline
 from langchain_community.tools import DuckDuckGoSearchRun
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -173,22 +171,63 @@ class InformationRetrievalTool(BaseTool):
 class FinAgentEvaluator:
     """Evaluator for the Finance Agent Benchmark dataset."""
 
-    def __init__(self, model_name: str = "openai/gpt-4o", api_key: str = None):
+    def __init__(
+        self,
+        model_name: str = "openai/gpt-4o",
+        model_type: str = "api",
+        api_key: str = None,
+    ):
         """
         Initialize the financial agent evaluator.
 
         Args:
-            model_name: Name of the model to use (supports openai/, anthropic/, google/, huggingface/ prefixes)
+            model_name: Name of the model to use (supports openai/, anthropic/, google/ prefixes for API models)
+            model_type: Type of model ('api' for API-based models or 'huggingface' for local HuggingFace models)
             api_key: API key for the model (if required)
         """
         self.model_name = model_name
+        self.model_type = model_type
         self.api_key = api_key
 
         # Third-party correspondence: Similar to get_registry_model in official implementation
         # Why: Need to initialize appropriate LLM based on model name like official approach
         # Changes: Using LangChain Chat classes instead of model_library classes, with added support for local models
         # Impact: No impact on correctness; provides same functionality with lmbase compatibility and local model support
-        if model_name.startswith("openai/"):
+        if model_type == "huggingface":
+            # Handle HuggingFace models using local inference with MPS support
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+
+            # Detect device: MPS for Apple Silicon, CUDA for NVIDIA, else CPU
+            if torch.backends.mps.is_available():
+                device = torch.device("mps")
+            elif torch.cuda.is_available():
+                device = torch.device("cuda")
+            else:
+                device = torch.device("cpu")
+            print(f"DEBUG: Using device: {device}")
+
+            # Load model and tokenizer
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.float16,
+            ).to(device)
+
+            # Create pipeline
+            pipe = pipeline(
+                "text-generation",
+                model=model,
+                tokenizer=tokenizer,
+                max_new_tokens=512,
+                do_sample=False,
+                repetition_penalty=1.03,
+                device=device,
+            )
+
+            llm = HuggingFacePipeline(pipeline=pipe)
+            self.llm = ChatHuggingFace(llm=llm)
+        elif model_name.startswith("openai/"):
             model_suffix = model_name.replace("openai/", "")
             self.llm = ChatOpenAI(model=model_suffix, api_key=api_key)
         elif model_name.startswith("anthropic/"):
@@ -211,28 +250,6 @@ class FinAgentEvaluator:
                 api_key=deepseek_api_key,
                 temperature=0.7,
             )
-        elif model_name.startswith("huggingface/") or "/" not in model_name:
-            # Handle local HuggingFace models or models specified by local path
-            # This could be a local path or a HuggingFace model identifier
-            model_path = (
-                model_name.replace("huggingface/", "")
-                if model_name.startswith("huggingface/")
-                else model_name
-            )
-            from langchain_community.chat_models import ChatHuggingFace
-            from transformers import AutoModelForCausalLM, AutoTokenizer
-
-            # Load tokenizer and model
-            tokenizer = AutoTokenizer.from_pretrained(model_path)
-            if not hasattr(tokenizer, "pad_token") or tokenizer.pad_token is None:
-                tokenizer.pad_token = tokenizer.eos_token
-
-            model = AutoModelForCausalLM.from_pretrained(
-                model_path, torch_dtype="auto", device_map="auto"
-            )
-
-            # Create ChatHuggingFace wrapper
-            self.llm = ChatHuggingFace(llm=model, tokenizer=tokenizer)
         else:
             # Default to OpenAI
             self.llm = ChatOpenAI(model="gpt-4o", api_key=api_key)
@@ -251,7 +268,7 @@ class FinAgentEvaluator:
         # Impact: No impact on correctness; provides same functionality with lmbase compatibility
         self.agent_executor = create_react_agent(self.llm, self.tools)
 
-    async def evaluate_single_sample(
+    def evaluate_single_sample(
         self, sample: Dict[str, Any], model=None, save_dir="./logs"
     ) -> Dict[str, Any]:
         """
@@ -300,24 +317,24 @@ class FinAgentEvaluator:
         Remember to always end your response with FINAL ANSWER once you have sufficient information.
         """
         )
-
+        print("*" * 20)
+        print("evaluate_single_sample within")
         human_message = HumanMessage(content=question)
 
         # Third-party correspondence: Similar to agent execution in Agent._process_turn() in official implementation
         # Why: Need to execute the agent to get response like official approach
         # Changes: Using LangGraph agent execution instead of custom agent loop
         # Impact: No impact on correctness; provides same functionality with lmbase compatibility
-        try:
-            result = await self.agent_executor.ainvoke(
-                {"messages": [system_prompt, human_message]},
-                config={"recursion_limit": 50},  # Reduced limit to ensure termination
-            )
+        result = self.agent_executor.invoke(
+            {"messages": [system_prompt, human_message]},
+            config={"recursion_limit": 50},
+        )
 
-            # Extract the final answer and sources
-            final_message = result["messages"][-1].content
-        except Exception as e:
-            # If agent fails, return a default response
-            final_message = f"Agent execution failed: {str(e)}. Question: {question}"
+        # Extract the final answer and sources
+        final_message = result["messages"][-1].content
+
+        print("*" * 20)
+        print(final_message)
 
         # Parse the final answer
         final_answer = ""
