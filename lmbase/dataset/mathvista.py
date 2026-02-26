@@ -75,17 +75,17 @@ class MathVistaDataset(VisualTextBase):
 
     def to_format(self, sample: dict):
         """Convert raw sample to standardized format."""
-        sample_id = sample.get("pid", str(self.idx))
+        sample_id = sample["pid"]
         self.idx += 1
 
-        question = sample.get("question", "").strip()
+        question = sample["question"].strip()
 
         # Extract all <imageN> tokens
         question_images = []
         image_tokens = re.findall(r"<image\d+>", question)
 
         # Get image data (decoded_image has the actual PIL image)
-        image_data = sample.get("decoded_image")
+        image_data = sample["decoded_image"]
 
         # If no image tokens in question but image exists, add token
         if image_data is not None and not image_tokens:
@@ -129,8 +129,8 @@ class MathVistaDataset(VisualTextBase):
                 logging.warning("No image data for sample %s", sample_id)
 
         # Process choices/options
-        choices = sample.get("choices", [])
-        if choices is not None and len(choices) > 0:
+        choices = sample["choices"]
+        if len(choices) > 0:
             try:
                 if isinstance(choices, str):
                     choices = ast.literal_eval(choices)
@@ -154,7 +154,7 @@ class MathVistaDataset(VisualTextBase):
         else:
             question = f"{question}{self.SOLUTION_FORMAT_PROMPT}\n"
 
-        groundtruth = str(sample.get("answer", "")).strip()
+        groundtruth = str(sample["answer"]).strip()
 
         return VisualTextSample(
             main_id=sample_id,
@@ -165,11 +165,11 @@ class MathVistaDataset(VisualTextBase):
             question_images=question_images,
             sample_info={
                 "dataset": self.hf_dataname,
-                "question_type": sample.get("question_type"),
-                "answer_type": sample.get("answer_type"),
-                "unit": sample.get("unit"),
-                "precision": sample.get("precision"),
-                "query": sample.get("query"),
-                "image_path": sample.get("image"),
+                "question_type": sample["question_type"],
+                "answer_type": sample["answer_type"],
+                "unit": sample["unit"],
+                "precision": sample["precision"],
+                "query": sample["query"],
+                "image_path": sample["image"],
             },
         )
