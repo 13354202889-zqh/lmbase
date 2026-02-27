@@ -537,6 +537,46 @@ class BlockBasedStoreManager:
 
         return None
 
+    def load_by_base(self, base: str) -> Dict[str, Any]:
+        """
+        Load all records for a given base from all block files.
+
+        Args:
+            base (str): The base name to load all records for (e.g. "results").
+
+        Returns:
+            Dict[str, Any]: A dictionary containing all records with their savename as key.
+        """
+        all_records = {}
+        full_info = self._get_full_info_from_disk(base)
+
+        # Iterate through all block files for this base
+        for filename, block_data in full_info.items():
+            path = os.path.join(self.folder, filename)
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    block_records = json.load(f)
+                    # Add all records from this block to the result
+                    for savename, data in block_records.items():
+                        all_records[savename] = self._resolve_loaded_value(data)
+            except (json.JSONDecodeError, OSError, IOError):
+                # Skip corrupted or inaccessible files
+                continue
+
+        return all_records
+
+    def load_all(self, base: str) -> Dict[str, Any]:
+        """
+        Load all records for a given base from all block files (alias for load_by_base).
+
+        Args:
+            base (str): The base name to load all records for (e.g. "results").
+
+        Returns:
+            Dict[str, Any]: A dictionary containing all records with their savename as key.
+        """
+        return self.load_by_base(base)
+
     def _prepare_value_for_storage(
         self, savename: str, data: Any, path: str = ""
     ) -> Any:
@@ -580,7 +620,7 @@ class BlockBasedStoreManager:
         # Handle lists/tuples that contain only tensors
         elif isinstance(data, (list, tuple)):
             # Check if all elements in the list/tuple are tensors
-            if all(isinstance(item, torch.Tensor) for item in data):
+            if len(data) > 0 and all(isinstance(item, torch.Tensor) for item in data):
                 # Create a record-specific folder under tensors directory
                 record_tensor_dir = os.path.join(self.folder, "tensors", savename)
                 os.makedirs(record_tensor_dir, exist_ok=True)

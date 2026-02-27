@@ -130,7 +130,7 @@ class MathVistaDataset(VisualTextBase):
 
         # Process choices/options
         choices = sample["choices"]
-        if len(choices) > 0:
+        if choices is not None and len(choices) > 0:
             try:
                 if isinstance(choices, str):
                     choices = ast.literal_eval(choices)
