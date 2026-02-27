@@ -37,6 +37,7 @@ from lmbase.dataset import (
     medqa,
     arc,
     finagent,
+    financebench,
 )
 
 data_factory = {
@@ -68,6 +69,7 @@ data_factory = {
     "medqa": medqa.MedQADataset,
     "arc": arc.ARCDataset,
     "finagent": finagent.FinAgentDataset,
+    "financebench": financebench.FinanceBenchDataset,
 }
 
 
@@ -101,6 +103,7 @@ hf_datasets = {
     "medqa": "openlifescienceai/medqa",
     "arc": "allenai/ai2_arc",
     "finagent": "vals-ai/finance_agent_benchmark",
+    "financebench": "PatronusAI/financebench",
 }
 
 
